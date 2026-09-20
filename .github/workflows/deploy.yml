@@ -1,0 +1,40 @@
+name: Deploy to GitHub Pages
+
+# Deploy เว็บไซต์ (static) ขึ้น GitHub Pages อัตโนมัติทุกครั้งที่ push เข้า main
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}   # กดรันเองได้จากแท็บ Actions
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# ให้ deploy ทีละครั้ง ไม่ให้ทับกัน
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload site artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # เผยแพร่ทั้งโฟลเดอร์ (index.html อยู่ที่ root)
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
