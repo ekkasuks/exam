@@ -13,7 +13,7 @@
  */
 const CONFIG = {
   // วาง URL ของ Google Apps Script Web App ที่ Deploy แล้ว (ลงท้าย /exec)
-  GAS_URL: 'PASTE_YOUR_WEB_APP_URL_HERE',
+  GAS_URL: 'https://script.google.com/macros/s/AKfycbx2AaVlPSl4MFdCkiRSpzOQcd8NG9MnXBx1Yn-5yVo2I2yIX71BPNzltTq7G2scx6q6pg/exec',
 
   // ค่าที่แสดงบนหน้าเว็บ (ถ้า Backend ตั้งค่าไว้ ระบบจะดึงมาทับให้อัตโนมัติ)
   SCHOOL_NAME: 'โรงเรียนบ้านใหม่',
