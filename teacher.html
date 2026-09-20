@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ระบบครู | สอบออนไลน์</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <script>
+    window.MathJax = { tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] }, svg: { fontCache: 'global' } };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
+</head>
+<body>
+
+  <!-- หน้าเข้าสู่ระบบครู -->
+  <div class="login-wrap" id="teacherLogin">
+    <div class="login-box">
+      <div class="logo">🔑</div>
+      <h1>เข้าสู่ระบบครู</h1>
+      <p class="sub" data-school-name>โรงเรียนบ้านใหม่</p>
+      <div id="loginAlert"></div>
+      <form id="teacherLoginForm">
+        <div class="field">
+          <label for="teacherCode">รหัสครู</label>
+          <input type="password" id="teacherCode" placeholder="กรอกรหัสครู" autocomplete="off" required>
+        </div>
+        <button type="submit" class="btn btn-lg" id="tLoginBtn">เข้าสู่ระบบ</button>
+      </form>
+      <p class="mt-3"><a href="index.html" class="muted" style="font-size:14px;">← กลับหน้านักเรียน</a></p>
+    </div>
+  </div>
+
+  <!-- แผงควบคุมครู -->
+  <div class="teacher-shell hidden" id="teacherShell">
+    <aside class="sidebar" id="sidebar">
+      <div class="logo" data-school-name>โรงเรียนบ้านใหม่</div>
+      <nav>
+        <a data-page="dashboard" class="active">🏠 <span>Dashboard</span></a>
+        <a data-page="students">👨‍🎓 <span>นักเรียน</span></a>
+        <a data-page="classes">🏫 <span>ห้องเรียน</span></a>
+        <a data-page="subjects">📚 <span>รายวิชา</span></a>
+        <a data-page="exams">📝 <span>ข้อสอบ</span></a>
+        <a data-page="import">📥 <span>นำเข้าข้อสอบ</span></a>
+        <a data-page="results">📊 <span>ผลการสอบ</span></a>
+        <a data-page="analysis">📈 <span>วิเคราะห์ข้อสอบ</span></a>
+        <a data-page="settings">⚙️ <span>ตั้งค่า</span></a>
+      </nav>
+      <div class="foot">
+        <button class="btn btn-sm btn-ghost" style="width:100%" onclick="Auth.logout()">ออกจากระบบ</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar" style="background:#fff;">
+        <div class="topbar-inner">
+          <button class="menu-toggle" id="menuToggle">☰</button>
+          <span class="brand" id="pageBrand">Dashboard</span>
+          <span></span>
+        </div>
+      </div>
+      <div class="main-inner" id="pageContent">
+        <div class="loader"><div class="spinner"></div>กำลังโหลด...</div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Modal กลาง -->
+  <div class="modal-overlay hidden" id="modal">
+    <div class="modal" id="modalCard"></div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/teacher.js"></script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ข้อสอบของฉัน</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-inner">
+      <span class="brand" data-school-name>โรงเรียนบ้านใหม่</span>
+      <button class="btn btn-sm btn-ghost" onclick="Auth.logout()">ออกจากระบบ</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="card" id="welcome"></div>
+
+    <h2 class="mb-2">📋 ข้อสอบที่เปิดอยู่</h2>
+    <div id="examList">
+      <div class="loader"><div class="spinner"></div>กำลังโหลด...</div>
+    </div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/student.js"></script>
+</body>
+</html>
