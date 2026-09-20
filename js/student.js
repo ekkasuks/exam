@@ -59,15 +59,9 @@
     }).join('');
   }
 
-  // ใช้รายการที่ส่งมาตอน login ก่อน (ลด request) แล้วค่อย refresh เงียบ ๆ
-  const cached = sessionStorage.getItem('exam_list');
-  if (cached) {
-    try { render(JSON.parse(cached)); } catch (e) { reload(); }
-  } else {
-    reload();
-  }
-
-  window.reload = async function () {
+  // ฟังก์ชันเหล่านี้เป็น function declaration (hoisted) จึงเรียกใช้ได้ก่อนบรรทัดนี้
+  // และผูกกับ window เพื่อให้ปุ่ม onclick ใน HTML เรียกได้
+  async function reload() {
     listEl.innerHTML = `<div class="loader"><div class="spinner"></div>กำลังโหลด...</div>`;
     try {
       const data = await API.call('studentLogin', { studentId: student.studentId });
@@ -75,17 +69,28 @@
       sessionStorage.setItem('exam_list', JSON.stringify(data.exams || []));
       render(data.exams);
     } catch (err) {
-      listEl.innerHTML = `<div class="alert alert-error">${err.message}</div>
+      listEl.innerHTML = `<div class="alert alert-error">${escapeHtml(err.message)}</div>
         <button class="btn btn-ghost" onclick="reload()">ลองใหม่</button>`;
     }
-  };
+  }
 
-  window.startExam = function (examId) {
+  function startExam(examId) {
     location.href = 'exam.html?examId=' + encodeURIComponent(examId);
-  };
+  }
 
-  window.escapeHtml = function (s) {
+  function escapeHtml(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  };
+  }
+
+  window.reload = reload;
+  window.startExam = startExam;
+
+  // ใช้รายการที่ส่งมาตอน login ก่อน (ลด request) แล้วค่อยแสดงผล
+  const cached = sessionStorage.getItem('exam_list');
+  if (cached) {
+    try { render(JSON.parse(cached)); } catch (e) { reload(); }
+  } else {
+    reload();
+  }
 })();
