@@ -68,7 +68,7 @@
       return;
     }
     try {
-      const data = await API.call('getExam', { examId, studentId: student.studentId });
+      const data = await API.call('getExam', { examId, studentId: student.studentId }, { retry: 1 });
       if (!data.questions || !data.questions.length) {
         return showError('ข้อสอบนี้ยังไม่มีคำถาม');
       }

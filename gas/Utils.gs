@@ -124,6 +124,38 @@ function deleteRowsByNumbers(sheetName, rowNumbers) {
   });
 }
 
+// ====== แคช (CacheService) เพื่อลดการอ่านชีตซ้ำ ======
+// ใช้กับข้อมูลที่อ่านบ่อยและเปลี่ยนไม่บ่อย เช่น คำถาม/เฉลยของข้อสอบ
+// ทุกฟังก์ชันกันพลาดด้วย try/catch — ถ้าแคชมีปัญหาให้ตกไปอ่านชีตตามปกติ
+function cacheGet(key) {
+  try {
+    var v = CacheService.getScriptCache().get(key);
+    return v ? JSON.parse(v) : null;
+  } catch (e) { return null; }
+}
+
+function cachePut(key, obj, ttlSeconds) {
+  try {
+    var s = JSON.stringify(obj);
+    // CacheService จำกัด ~100KB ต่อคีย์ — ถ้าใหญ่เกินไปให้ข้าม (ไปอ่านชีตแทน)
+    if (s.length < 95000) {
+      CacheService.getScriptCache().put(key, s, ttlSeconds || 21600); // ค่าเริ่มต้น 6 ชม.
+    }
+  } catch (e) { /* ข้ามได้ */ }
+}
+
+function cacheDel(/* ...keys */) {
+  try {
+    var keys = Array.prototype.slice.call(arguments);
+    CacheService.getScriptCache().removeAll(keys);
+  } catch (e) { /* ข้ามได้ */ }
+}
+
+/** ล้างแคชของข้อสอบชุดหนึ่ง (เรียกเมื่อครูแก้/ลบข้อสอบ) */
+function invalidateExamCache(examId) {
+  cacheDel('tree_' + examId, 'score_' + examId);
+}
+
 // ====== ล็อกเพื่อกันเขียนชนกัน ======
 // timeoutMs: เวลารอสูงสุดในการขอล็อก (ค่าเริ่มต้น 20 วินาที)
 // สำหรับงานที่มีคนแย่งกันมาก (เช่น ส่งข้อสอบพร้อมกัน) ควรตั้งให้นานขึ้น

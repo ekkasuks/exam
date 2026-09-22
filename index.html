@@ -55,7 +55,7 @@
       btn.disabled = true; btn.textContent = 'กำลังเข้าสู่ระบบ...';
       alertBox.innerHTML = '';
       try {
-        const data = await API.call('studentLogin', { studentId });
+        const data = await API.call('studentLogin', { studentId }, { retry: 1 });
         Auth.setStudent(data.student);
         // เก็บรายการข้อสอบไว้ให้หน้า student ใช้ทันที (ลด request)
         sessionStorage.setItem('exam_list', JSON.stringify(data.exams || []));

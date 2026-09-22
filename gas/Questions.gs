@@ -98,6 +98,71 @@ function buildQuestionTree(examId, includeCorrect, shuffleQ, shuffleC) {
 }
 
 /**
+ * ต้นฉบับคำถามสำหรับนักเรียน (ไม่มีเฉลย, ยังไม่สุ่ม) — แคชไว้ลดการอ่านชีตซ้ำ
+ * แล้วค่อยสุ่มตามการตั้งค่าในหน่วยความจำต่อครั้ง (สำเนาสดจากแคชทุกครั้ง)
+ */
+function getStudentTree(examId, shuffleQ, shuffleC) {
+  var key = 'tree_' + examId;
+  var base = cacheGet(key);
+  if (!base) {
+    base = buildQuestionTree(examId, /*includeCorrect*/ false, /*shuffleQ*/ false, /*shuffleC*/ false);
+    cachePut(key, base);
+  }
+  // base เป็นสำเนาใหม่ทุกครั้ง (มาจาก JSON.parse หรือเพิ่งสร้าง) จึงสุ่มทับได้เลย
+  var tree = base;
+  if (shuffleC) {
+    tree.forEach(function (q) { q.choices = shuffle(q.choices); });
+  }
+  if (shuffleQ) {
+    tree = shuffle(tree);
+  }
+  return tree;
+}
+
+/**
+ * โมเดลสำหรับตรวจคะแนน (คะแนนต่อข้อ + เฉลยอ้างอิงด้วย choiceId) — แคชไว้
+ * ใช้ตอน submitExam เพื่อไม่ต้องอ่านชีต Questions/Choices ทั้งแผ่นทุกครั้ง
+ */
+function getExamScoreModel(examId) {
+  var key = 'score_' + examId;
+  var m = cacheGet(key);
+  if (m) return m;
+
+  var questions = findRows(SHEETS.QUESTIONS, function (r) { return String(r.examId) === String(examId); });
+  var choices = findRows(SHEETS.CHOICES, function (r) { return String(r.examId) === String(examId); });
+
+  var scorePerQ = {};
+  var questionIds = [];
+  questions.forEach(function (q) {
+    var qid = String(q.questionId);
+    scorePerQ[qid] = Number(q.score) || 0;
+    questionIds.push(qid);
+  });
+
+  var correctByChoiceId = {};
+  var labelByChoiceId = {};
+  var correctChoiceByQ = {};
+  choices.forEach(function (c) {
+    var cid = String(c.choiceId);
+    labelByChoiceId[cid] = String(c.label);
+    if (toBool(c.isCorrect)) {
+      correctByChoiceId[cid] = true;
+      correctChoiceByQ[String(c.questionId)] = cid;
+    }
+  });
+
+  m = {
+    questionIds: questionIds,
+    scorePerQ: scorePerQ,
+    correctByChoiceId: correctByChoiceId,
+    labelByChoiceId: labelByChoiceId,
+    correctChoiceByQ: correctChoiceByQ
+  };
+  cachePut(key, m);
+  return m;
+}
+
+/**
  * URL สำหรับแสดงรูปจาก Drive (ใช้ thumbnail endpoint โหลดเร็ว)
  */
 function imageUrl(fileId) {

@@ -64,7 +64,7 @@
   async function reload() {
     listEl.innerHTML = `<div class="loader"><div class="spinner"></div>กำลังโหลด...</div>`;
     try {
-      const data = await API.call('studentLogin', { studentId: student.studentId });
+      const data = await API.call('studentLogin', { studentId: student.studentId }, { retry: 1 });
       Auth.setStudent(data.student);
       sessionStorage.setItem('exam_list', JSON.stringify(data.exams || []));
       render(data.exams);

@@ -102,6 +102,7 @@ function saveExam(params) {
 
     // เขียนคำถาม/ตัวเลือกใหม่ทั้งหมด (ลบของเก่าก่อน)
     saveQuestionsForExam(examId, questions, scorePerQuestion);
+    invalidateExamCache(examId); // ล้างแคชคำถาม/เฉลยของข้อสอบชุดนี้
 
     return ok({ examId: examId, numQuestions: questions.length, totalScore: totalScore });
   });
@@ -119,6 +120,7 @@ function deleteExam(params) {
     // ลบคำถาม/ตัวเลือก
     deleteRowsByExam(SHEETS.QUESTIONS, examId);
     deleteRowsByExam(SHEETS.CHOICES, examId);
+    invalidateExamCache(examId);
     return ok(true);
   });
 }
@@ -278,7 +280,8 @@ function getExam(params) {
   }
 
   var meta = examMeta(exam);
-  var questions = buildQuestionTree(examId, /*includeCorrect*/ false,
+  // ใช้ต้นฉบับที่แคชไว้ (ลดการอ่านชีตซ้ำเมื่อมีนักเรียนเปิดพร้อมกันหลายคน)
+  var questions = getStudentTree(examId,
     toBool(exam.shuffleQuestions), toBool(exam.shuffleChoices));
 
   // ส่งเวลาเซิร์ฟเวอร์เพื่อให้ client ซิงก์นาฬิกา

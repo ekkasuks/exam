@@ -1035,6 +1035,8 @@ S0001,ด.ช.,ตัวอย่าง ใจดี,ป.5,ป.5/1,10
             academicYear: $('setYear').value.trim(),
             primaryColor: $('setColor').value
           });
+          // ล้างแคช config ในเครื่องเพื่อให้ดึงค่าที่เพิ่งบันทึกใหม่
+          try { localStorage.removeItem('exam_pubcfg'); } catch (e) {}
           toast('บันทึกแล้ว'); applyPublicConfig();
         } catch (err) { toast(err.message, 'error'); }
       });

@@ -41,25 +41,12 @@ function submitExam(params) {
     return fail('คุณส่งข้อสอบชุดนี้ไปแล้ว', 'ALREADY_DONE');
   }
 
-  // โหลดคำถาม+เฉลยจริงจาก server
-  var questions = findRows(SHEETS.QUESTIONS, function (r) { return String(r.examId) === examId; });
-  var choices = findRows(SHEETS.CHOICES, function (r) { return String(r.examId) === examId; });
-
-  var scorePerQ = {};
-  questions.forEach(function (q) { scorePerQ[String(q.questionId)] = Number(q.score) || 0; });
-
-  // เฉลยอ้างอิงด้วย choiceId (ไม่ผูกกับ label เพื่อรองรับการสุ่มตัวเลือก)
-  var correctByChoiceId = {};   // choiceId -> true (ถ้าเป็นตัวเลือกที่ถูก)
-  var labelByChoiceId = {};     // choiceId -> label เดิม (ไว้บันทึก/วิเคราะห์)
-  var correctChoiceByQ = {};    // questionId -> choiceId ที่ถูก (ไว้เฉลย)
-  choices.forEach(function (c) {
-    var cid = String(c.choiceId);
-    labelByChoiceId[cid] = String(c.label);
-    if (toBool(c.isCorrect)) {
-      correctByChoiceId[cid] = true;
-      correctChoiceByQ[String(c.questionId)] = cid;
-    }
-  });
+  // โหลดโมเดลตรวจคะแนน (แคชไว้ — ไม่ต้องอ่านชีต Questions/Choices ทั้งแผ่นทุกครั้ง)
+  var model = getExamScoreModel(examId);
+  var scorePerQ = model.scorePerQ;
+  var correctByChoiceId = model.correctByChoiceId;   // choiceId -> true
+  var labelByChoiceId = model.labelByChoiceId;       // choiceId -> label เดิม
+  var correctChoiceByQ = model.correctChoiceByQ;     // questionId -> choiceId ที่ถูก
 
   // คำตอบที่ส่งมา: questionId -> choiceId ที่เลือก
   var submitted = {};
@@ -73,8 +60,7 @@ function submitExam(params) {
   var answerRows = [];
   var reviewOut = [];
 
-  questions.forEach(function (q) {
-    var qid = String(q.questionId);
+  model.questionIds.forEach(function (qid) {
     var selCid = submitted[qid] || '';
     var isCorrect = selCid !== '' && correctByChoiceId[selCid] === true;
     var qScore = isCorrect ? (scorePerQ[qid] || 0) : 0;
