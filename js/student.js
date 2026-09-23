@@ -19,6 +19,37 @@
   `;
 
   const listEl = document.getElementById('examList');
+  const resultsEl = document.getElementById('resultsSection');
+
+  // ---- รายงานผลสอบของฉัน (วิชา / ชื่อทดสอบ / คะแนน / ผ่าน-ไม่ผ่าน เกณฑ์ 50%) ----
+  function renderResults(results) {
+    if (!results || !results.length) { resultsEl.innerHTML = ''; return; }
+    resultsEl.innerHTML = `
+      <h2 class="mb-2">📊 ผลสอบของฉัน</h2>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>วิชา</th><th>ชื่อการทดสอบ</th><th class="center">คะแนน</th><th class="center">ผล</th>
+        </tr></thead>
+        <tbody>${results.map(r => {
+          const graded = r.showScore;
+          const scoreCell = graded
+            ? `${r.score}/${r.totalScore} <span class="muted">(${r.percent}%)</span>`
+            : `<span class="muted">ส่งแล้ว</span>`;
+          const resultCell = graded
+            ? (r.passed
+                ? '<span class="badge badge-green">✅ ผ่าน</span>'
+                : '<span class="badge badge-red">❌ ไม่ผ่าน</span>')
+            : '<span class="badge badge-gray">รอประกาศผล</span>';
+          return `<tr>
+            <td>${escapeHtml(r.subjectName || '-')}</td>
+            <td>${escapeHtml(r.examTitle)}</td>
+            <td class="center">${scoreCell}</td>
+            <td class="center">${resultCell}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>
+      <p class="muted mt-1" style="font-size:13px">* เกณฑ์ผ่าน ตั้งแต่ 50% ขึ้นไป</p>`;
+  }
 
   function render(exams) {
     if (!exams || !exams.length) {
@@ -61,16 +92,21 @@
 
   // ฟังก์ชันเหล่านี้เป็น function declaration (hoisted) จึงเรียกใช้ได้ก่อนบรรทัดนี้
   // และผูกกับ window เพื่อให้ปุ่ม onclick ใน HTML เรียกได้
-  async function reload() {
-    listEl.innerHTML = `<div class="loader"><div class="spinner"></div>กำลังโหลด...</div>`;
+  // silent=true : รีเฟรชเงียบ ๆ เบื้องหลัง (ไม่ล้างจอเป็นสปินเนอร์ ไม่ทับด้วย error)
+  async function reload(silent) {
+    if (!silent) listEl.innerHTML = `<div class="loader"><div class="spinner"></div>กำลังโหลด...</div>`;
     try {
       const data = await API.call('studentLogin', { studentId: student.studentId }, { retry: 1 });
       Auth.setStudent(data.student);
       sessionStorage.setItem('exam_list', JSON.stringify(data.exams || []));
+      sessionStorage.setItem('exam_results', JSON.stringify(data.results || []));
       render(data.exams);
+      renderResults(data.results || []);
     } catch (err) {
-      listEl.innerHTML = `<div class="alert alert-error">${escapeHtml(err.message)}</div>
-        <button class="btn btn-ghost" onclick="reload()">ลองใหม่</button>`;
+      if (!silent) {
+        listEl.innerHTML = `<div class="alert alert-error">${escapeHtml(err.message)}</div>
+          <button class="btn btn-ghost" onclick="reload()">ลองใหม่</button>`;
+      }
     }
   }
 
@@ -86,11 +122,16 @@
   window.reload = reload;
   window.startExam = startExam;
 
-  // ใช้รายการที่ส่งมาตอน login ก่อน (ลด request) แล้วค่อยแสดงผล
+  // แสดงจาก cache ทันที (ลื่น) แล้วรีเฟรชเบื้องหลังให้ข้อมูลล่าสุด
+  // (เช่น หลังเพิ่งทำข้อสอบเสร็จ ผลสอบจะอัปเดตเอง)
   const cached = sessionStorage.getItem('exam_list');
   if (cached) {
-    try { render(JSON.parse(cached)); } catch (e) { reload(); }
+    try {
+      render(JSON.parse(cached));
+      renderResults(JSON.parse(sessionStorage.getItem('exam_results') || '[]'));
+      reload(true); // รีเฟรชเงียบ ๆ
+    } catch (e) { reload(false); }
   } else {
-    reload();
+    reload(false);
   }
 })();

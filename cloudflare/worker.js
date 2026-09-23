@@ -240,13 +240,50 @@ async function studentLogin(params, env) {
   if (st === 'ปิด' || st === 'inactive') return fail('บัญชีนักเรียนนี้ถูกปิดการใช้งาน', 'INACTIVE');
 
   const exams = await listAvailableExamsForStudent(env, student);
+  const results = await buildStudentResults(env, student);
   return ok({
     student: {
       studentId: student.studentId, title: student.title, fullName: student.fullName,
       level: student.level, room: student.room, number: student.number
     },
-    exams
+    exams,
+    results
   });
+}
+
+/** ผลสอบทั้งหมดของนักเรียน (ครั้งล่าสุดต่อชุด) พร้อมชื่อวิชา/ชื่อทดสอบ + ผ่าน/ไม่ผ่าน (เกณฑ์ 50%) */
+async function buildStudentResults(env, student) {
+  const rows = await dbAll(env,
+    "SELECT * FROM results WHERE UPPER(studentId) = ? AND status = 'submitted' ORDER BY submittedAt DESC",
+    String(student.studentId).trim().toUpperCase());
+  if (!rows.length) return [];
+
+  const latest = {};
+  rows.forEach(r => { const k = String(r.examId); if (!latest[k]) latest[k] = r; }); // เรียง desc แล้ว ตัวแรก = ล่าสุด
+
+  const exams = await dbAll(env, 'SELECT examId, title, subjectId, showScore FROM exams');
+  const examMap = {};
+  exams.forEach(e => { examMap[String(e.examId)] = e; });
+  const subjects = await subjectMap(env);
+
+  const out = Object.keys(latest).map(eid => {
+    const r = latest[eid];
+    const e = examMap[eid] || {};
+    const percent = Number(r.percent) || 0;
+    return {
+      examId: eid,
+      examTitle: e.title || '(ข้อสอบถูกลบ)',
+      subjectName: subjects[e.subjectId] || '',
+      score: Number(r.score) || 0,
+      totalScore: Number(r.totalScore) || 0,
+      percent,
+      submittedAt: r.submittedAt || '',
+      showScore: e.showScore !== undefined ? toBool(e.showScore) : true,
+      passed: percent >= 50
+    };
+  });
+  out.sort((a, b) => String(b.submittedAt).localeCompare(String(a.submittedAt)));
+  return out;
 }
 
 async function teacherLogin(params, env) {

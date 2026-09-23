@@ -57,8 +57,9 @@
       try {
         const data = await API.call('studentLogin', { studentId }, { retry: 1 });
         Auth.setStudent(data.student);
-        // เก็บรายการข้อสอบไว้ให้หน้า student ใช้ทันที (ลด request)
+        // เก็บรายการข้อสอบ + ผลสอบไว้ให้หน้า student ใช้ทันที (ลด request)
         sessionStorage.setItem('exam_list', JSON.stringify(data.exams || []));
+        sessionStorage.setItem('exam_results', JSON.stringify(data.results || []));
         location.href = 'student.html';
       } catch (err) {
         showAlert(err.message || 'เข้าสู่ระบบไม่สำเร็จ');

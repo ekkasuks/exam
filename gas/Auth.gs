@@ -31,7 +31,45 @@ function studentLogin(params) {
   };
 
   var exams = listAvailableExamsForStudent(student);
-  return ok({ student: info, exams: exams });
+  var results = buildStudentResults(student);
+  return ok({ student: info, exams: exams, results: results });
+}
+
+/** ผลสอบทั้งหมดของนักเรียน (ครั้งล่าสุดต่อชุด) + ผ่าน/ไม่ผ่าน (เกณฑ์ 50%) */
+function buildStudentResults(student) {
+  var rows = findRows(SHEETS.RESULTS, function (r) {
+    return String(r.studentId).trim().toUpperCase() === String(student.studentId).trim().toUpperCase() &&
+           String(r.status) === 'submitted';
+  });
+  if (!rows.length) return [];
+  rows.sort(function (a, b) { return String(b.submittedAt).localeCompare(String(a.submittedAt)); });
+
+  var latest = {};
+  rows.forEach(function (r) { var k = String(r.examId); if (!latest[k]) latest[k] = r; });
+
+  var exams = {};
+  readAll(SHEETS.EXAMS).forEach(function (e) { exams[String(e.examId)] = e; });
+  var subjects = {};
+  readAll(SHEETS.SUBJECTS).forEach(function (s) { subjects[s.subjectId] = s.name; });
+
+  var out = Object.keys(latest).map(function (eid) {
+    var r = latest[eid];
+    var e = exams[eid] || {};
+    var percent = Number(r.percent) || 0;
+    return {
+      examId: eid,
+      examTitle: e.title || '(ข้อสอบถูกลบ)',
+      subjectName: subjects[e.subjectId] || '',
+      score: Number(r.score) || 0,
+      totalScore: Number(r.totalScore) || 0,
+      percent: percent,
+      submittedAt: r.submittedAt || '',
+      showScore: e.showScore !== undefined ? toBool(e.showScore) : true,
+      passed: percent >= 50
+    };
+  });
+  out.sort(function (a, b) { return String(b.submittedAt).localeCompare(String(a.submittedAt)); });
+  return out;
 }
 
 /**
