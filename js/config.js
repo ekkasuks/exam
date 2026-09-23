@@ -15,7 +15,7 @@ const CONFIG = {
   // URL ของ Backend — ใส่ได้ทั้ง 2 แบบ:
   //  (ก) Google Apps Script Web App (ลงท้าย /exec)
   //  (ข) Cloudflare Worker (เช่น https://exam-api.xxxx.workers.dev) — ดูวิธีย้ายที่ cloudflare/README.md
-  GAS_URL: 'https://script.google.com/macros/s/AKfycbwIyh4ReTZlfvLuWgdOMxpsWLO8kDubWhr5qzecmJSpn-9R6GXomIg11KlHxMP8dTH7mw/exec',
+  GAS_URL: 'https://exam-api.ekkasuks.workers.dev',
 
   // ค่าที่แสดงบนหน้าเว็บ (ถ้า Backend ตั้งค่าไว้ ระบบจะดึงมาทับให้อัตโนมัติ)
   SCHOOL_NAME: 'โรงเรียนบ้านใหม่',
