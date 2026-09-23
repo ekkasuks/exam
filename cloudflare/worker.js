@@ -113,6 +113,7 @@ function requireTeacher(params, env) {
 async function route(action, params, env) {
   switch (action) {
     case 'ping': return ok({ time: nowISO(), version: '1.0-cf' });
+    case 'initDb': return await initDb(env);
     case 'getPublicConfig': return await getPublicConfig(env);
 
     case 'studentLogin': return await studentLogin(params, env);
@@ -157,6 +158,43 @@ async function route(action, params, env) {
   }
 }
 
+// ============ ติดตั้งฐานข้อมูล (initDb) ============
+// สร้างตารางทั้งหมด + ข้อมูลเริ่มต้น (idempotent — เรียกซ้ำได้ไม่ลบข้อมูลเดิม)
+// เปิดใช้ได้โดยเข้า URL:  <Worker-URL>/?action=initDb
+const SCHEMA_STATEMENTS = [
+  `CREATE TABLE IF NOT EXISTS students (studentId TEXT PRIMARY KEY, title TEXT, fullName TEXT, level TEXT, room TEXT, number TEXT, status TEXT DEFAULT 'ใช้งาน')`,
+  `CREATE INDEX IF NOT EXISTS idx_students_level_room ON students(level, room)`,
+  `CREATE TABLE IF NOT EXISTS classes (classId TEXT PRIMARY KEY, level TEXT, room TEXT, note TEXT)`,
+  `CREATE TABLE IF NOT EXISTS subjects (subjectId TEXT PRIMARY KEY, name TEXT, status TEXT DEFAULT 'ใช้งาน')`,
+  `CREATE TABLE IF NOT EXISTS exams (examId TEXT PRIMARY KEY, title TEXT, subjectId TEXT, level TEXT, description TEXT, numQuestions INTEGER DEFAULT 0, totalScore REAL DEFAULT 0, scorePerQuestion REAL DEFAULT 1, duration INTEGER DEFAULT 0, openAt TEXT, closeAt TEXT, allowedRooms TEXT, status TEXT DEFAULT 'ปิด', shuffleQuestions INTEGER DEFAULT 0, shuffleChoices INTEGER DEFAULT 0, showScore INTEGER DEFAULT 1, allowRetake INTEGER DEFAULT 0, showAnswers INTEGER DEFAULT 0, academicYear TEXT, createdAt TEXT, updatedAt TEXT)`,
+  `CREATE TABLE IF NOT EXISTS questions (questionId TEXT PRIMARY KEY, examId TEXT, ord INTEGER DEFAULT 0, questionText TEXT, imageId TEXT, score REAL DEFAULT 0)`,
+  `CREATE INDEX IF NOT EXISTS idx_questions_exam ON questions(examId)`,
+  `CREATE TABLE IF NOT EXISTS choices (choiceId TEXT PRIMARY KEY, questionId TEXT, examId TEXT, label TEXT, choiceText TEXT, imageId TEXT, isCorrect INTEGER DEFAULT 0, ord INTEGER DEFAULT 0)`,
+  `CREATE INDEX IF NOT EXISTS idx_choices_exam ON choices(examId)`,
+  `CREATE INDEX IF NOT EXISTS idx_choices_question ON choices(questionId)`,
+  `CREATE TABLE IF NOT EXISTS results (attemptId TEXT PRIMARY KEY, examId TEXT, studentId TEXT, score REAL DEFAULT 0, totalScore REAL DEFAULT 0, percent REAL DEFAULT 0, startedAt TEXT, submittedAt TEXT, durationUsed INTEGER DEFAULT 0, status TEXT DEFAULT 'submitted', academicYear TEXT)`,
+  `CREATE INDEX IF NOT EXISTS idx_results_exam ON results(examId)`,
+  `CREATE INDEX IF NOT EXISTS idx_results_student ON results(studentId)`,
+  `CREATE TABLE IF NOT EXISTS answers (answerId TEXT PRIMARY KEY, attemptId TEXT, examId TEXT, studentId TEXT, questionId TEXT, selectedLabel TEXT, isCorrect INTEGER DEFAULT 0, score REAL DEFAULT 0)`,
+  `CREATE INDEX IF NOT EXISTS idx_answers_exam ON answers(examId)`,
+  `CREATE INDEX IF NOT EXISTS idx_answers_attempt ON answers(attemptId)`,
+  `CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)`
+];
+const SEED_STATEMENTS = [
+  `INSERT OR IGNORE INTO subjects (subjectId, name, status) VALUES
+    ('SUB_thai','ภาษาไทย','ใช้งาน'),('SUB_math','คณิตศาสตร์','ใช้งาน'),
+    ('SUB_sci','วิทยาศาสตร์และเทคโนโลยี','ใช้งาน'),('SUB_social','สังคมศึกษา ศาสนาและวัฒนธรรม','ใช้งาน'),
+    ('SUB_health','สุขศึกษาและพลศึกษา','ใช้งาน'),('SUB_art','ศิลปะ','ใช้งาน'),
+    ('SUB_work','การงานอาชีพ','ใช้งาน'),('SUB_eng','ภาษาอังกฤษ','ใช้งาน')`,
+  `INSERT OR IGNORE INTO settings (key, value) VALUES
+    ('schoolName','โรงเรียนบ้านใหม่'),('academicYear','2568'),('primaryColor','#2563eb')`
+];
+async function initDb(env) {
+  const stmts = SCHEMA_STATEMENTS.concat(SEED_STATEMENTS).map(s => env.DB.prepare(s));
+  await env.DB.batch(stmts);
+  return ok({ initialized: true, tables: SCHEMA_STATEMENTS.length, message: 'สร้างตารางฐานข้อมูลเรียบร้อย พร้อมใช้งาน' });
+}
+
 // ============ Settings ============
 async function getSetting(env, key, def) {
   const row = await dbFirst(env, 'SELECT value FROM settings WHERE key = ?', key);
@@ -168,11 +206,16 @@ async function setSetting(env, key, value) {
     key, value);
 }
 async function getPublicConfig(env) {
-  return ok({
-    schoolName: await getSetting(env, 'schoolName', 'โรงเรียนบ้านใหม่'),
-    academicYear: await getSetting(env, 'academicYear', '2568'),
-    primaryColor: await getSetting(env, 'primaryColor', '#2563eb')
-  });
+  // ไม่ให้พังถ้ายังไม่ได้ initDb — คืนค่าเริ่มต้นเพื่อให้หน้าเว็บโหลดได้
+  try {
+    return ok({
+      schoolName: await getSetting(env, 'schoolName', 'โรงเรียนบ้านใหม่'),
+      academicYear: await getSetting(env, 'academicYear', '2568'),
+      primaryColor: await getSetting(env, 'primaryColor', '#2563eb')
+    });
+  } catch (e) {
+    return ok({ schoolName: 'โรงเรียนบ้านใหม่', academicYear: '2568', primaryColor: '#2563eb', needsInit: true });
+  }
 }
 async function getSettingsAction(params, env) {
   requireTeacher(params, env);
@@ -214,7 +257,9 @@ async function teacherLogin(params, env) {
     await new Promise(r => setTimeout(r, 800));
     return fail('รหัสครูไม่ถูกต้อง', 'WRONG_CODE');
   }
-  return ok({ token: getTeacherCode(env), schoolName: await getSetting(env, 'schoolName') });
+  let schoolName = 'โรงเรียนบ้านใหม่';
+  try { schoolName = await getSetting(env, 'schoolName', schoolName); } catch (e) { /* ยังไม่ initDb ก็ล็อกอินได้ */ }
+  return ok({ token: getTeacherCode(env), schoolName });
 }
 
 // ============ Students ============
