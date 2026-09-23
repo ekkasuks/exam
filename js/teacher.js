@@ -272,6 +272,8 @@
       <h2>นำเข้ารายชื่อนักเรียนจาก CSV</h2>
       <p class="muted mb-2">คอลัมน์: <b>รหัส, คำนำหน้า, ชื่อ-นามสกุล, ชั้น, ห้อง, เลขที่</b><br>
       (บรรทัดแรกเป็นหัวตาราง เว้นรหัสว่างได้ ระบบจะสร้างให้อัตโนมัติ)</p>
+      <button class="btn btn-sm btn-outline mb-2" onclick="TEACHER.downloadStudentTemplate()">⬇️ ดาวน์โหลดไฟล์เทมเพลต CSV</button>
+      <p class="muted mb-2" style="font-size:13px">เปิดไฟล์ด้วย Excel/Google Sheets กรอกข้อมูล แล้วเลือกไฟล์ด้านล่างเพื่อนำเข้า</p>
       <div class="field">
         <textarea id="csvArea" placeholder="รหัส,คำนำหน้า,ชื่อ-นามสกุล,ชั้น,ห้อง,เลขที่
 S0001,ด.ช.,ตัวอย่าง ใจดี,ป.5,ป.5/1,10
@@ -298,6 +300,16 @@ S0001,ด.ช.,ตัวอย่าง ใจดี,ป.5,ป.5/1,10
         renderStudents();
       } catch (err) { toast(err.message, 'error'); }
     });
+  }
+
+  function downloadStudentTemplate() {
+    // เทมเพลตพร้อมหัวตาราง + ตัวอย่าง 2 แถว (แถวที่ 2 เว้นรหัสไว้ให้ระบบสร้างอัตโนมัติ)
+    downloadCsv('เทมเพลตรายชื่อนักเรียน',
+      ['รหัส', 'คำนำหน้า', 'ชื่อ-นามสกุล', 'ชั้น', 'ห้อง', 'เลขที่'],
+      [
+        ['S0001', 'ด.ช.', 'ตัวอย่าง ใจดี', 'ป.5', 'ป.5/1', '1'],
+        ['', 'ด.ญ.', 'สมหญิง เรียนเก่ง', 'ป.5', 'ป.5/1', '2']
+      ]);
   }
 
   function parseCsv(text) {
@@ -1051,7 +1063,7 @@ S0001,ด.ช.,ตัวอย่าง ใจดี,ป.5,ป.5/1,10
   // ---------- expose ----------
   window.TEACHER = {
     go: navigate,
-    studentForm, deleteStudent, importCsv,
+    studentForm, deleteStudent, importCsv, downloadStudentTemplate,
     classForm, deleteClass,
     subjectForm, deleteSubject,
     editExam, toggleStatus, deleteExam,
