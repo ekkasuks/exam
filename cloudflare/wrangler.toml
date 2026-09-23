@@ -1,0 +1,22 @@
+# wrangler.toml — สำหรับผู้ที่ใช้ Wrangler CLI (ไม่บังคับ ถ้าใช้วิธี Dashboard ข้ามไฟล์นี้ได้)
+#
+# วิธีใช้ (CLI):
+#   1) npm install -g wrangler
+#   2) wrangler login
+#   3) wrangler d1 create exam-db      # แล้วนำ database_id ที่ได้มาวางด้านล่าง
+#   4) wrangler d1 execute exam-db --remote --file=./schema.sql
+#   5) wrangler deploy
+#   6) ตั้งรหัสครูแบบปลอดภัย:  wrangler secret put TEACHER_CODE   (แล้วพิมพ์ 127 หรือรหัสที่ต้องการ)
+
+name = "exam-api"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+[[d1_databases]]
+binding = "DB"                 # ชื่อ binding ต้องเป็น DB (โค้ดใช้ env.DB)
+database_name = "exam-db"
+database_id = "PASTE_YOUR_D1_DATABASE_ID"
+
+# ตั้งรหัสครูแบบ variable (เห็นใน dashboard) — แนะนำให้ใช้ secret แทน (ดูขั้นตอน 6 ด้านบน)
+[vars]
+TEACHER_CODE = "127"
