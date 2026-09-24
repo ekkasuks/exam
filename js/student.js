@@ -31,15 +31,10 @@
           <th>วิชา</th><th>ชื่อการทดสอบ</th><th class="center">คะแนน</th><th class="center">ผล</th>
         </tr></thead>
         <tbody>${results.map(r => {
-          const graded = r.showScore;
-          const scoreCell = graded
-            ? `${r.score}/${r.totalScore} <span class="muted">(${r.percent}%)</span>`
-            : `<span class="muted">ส่งแล้ว</span>`;
-          const resultCell = graded
-            ? (r.passed
-                ? '<span class="badge badge-green">✅ ผ่าน</span>'
-                : '<span class="badge badge-red">❌ ไม่ผ่าน</span>')
-            : '<span class="badge badge-gray">รอประกาศผล</span>';
+          const scoreCell = `${r.score}/${r.totalScore} <span class="muted">(${r.percent}%)</span>`;
+          const resultCell = r.passed
+            ? '<span class="badge badge-green">✅ ผ่าน</span>'
+            : '<span class="badge badge-red">❌ ไม่ผ่าน</span>';
           return `<tr>
             <td>${escapeHtml(r.subjectName || '-')}</td>
             <td>${escapeHtml(r.examTitle)}</td>
