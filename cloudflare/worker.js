@@ -865,34 +865,150 @@ async function getAnalysis(params, env) {
 
   const questions = await dbAll(env, 'SELECT * FROM questions WHERE examId = ? ORDER BY ord', examId);
   const choices = await dbAll(env, 'SELECT * FROM choices WHERE examId = ? ORDER BY ord', examId);
+  const results = await dbAll(env, "SELECT * FROM results WHERE examId = ? AND status = 'submitted'", examId);
   const answers = await dbAll(env, 'SELECT * FROM answers WHERE examId = ?', examId);
+
+  return ok(computeAnalysis(examMeta(exam), questions, choices, results, answers, 'ord'));
+}
+
+/**
+ * วิเคราะห์ข้อสอบเชิงจิตมิติ (item analysis)
+ * รายข้อ: ค่าความยาก P, อำนาจจำแนก D (กลุ่มสูง-ต่ำ 27%), ประสิทธิภาพตัวลวง DE
+ * ภาพรวม: ความเชื่อมั่น KR-20, ความเที่ยงตรงสูงสุด (√KR20), ค่าเฉลี่ย P/D, สรุปคุณภาพ
+ * ordKey: ชื่อคอลัมน์ลำดับ ('ord' สำหรับ D1 / 'order' สำหรับ Sheets)
+ */
+function computeAnalysis(examMetaObj, questions, choices, results, answers, ordKey) {
+  ordKey = ordKey || 'ord';
+  const ordOf = (r) => Number(r[ordKey] != null ? r[ordKey] : r.order) || 0;
+
+  // ครั้งล่าสุดต่อคน
+  const byStudent = {};
+  results.forEach(r => {
+    const sid = String(r.studentId).trim().toUpperCase();
+    if (!byStudent[sid] || String(r.submittedAt) > String(byStudent[sid].submittedAt)) byStudent[sid] = r;
+  });
+  const attemptIds = {};
+  Object.keys(byStudent).forEach(sid => { attemptIds[String(byStudent[sid].attemptId)] = true; });
+
+  const qs = questions.slice().sort((a, b) => ordOf(a) - ordOf(b));
+  const qids = qs.map(q => String(q.questionId));
+  const k = qids.length;
 
   const choiceByQ = {};
   choices.forEach(c => { (choiceByQ[String(c.questionId)] = choiceByQ[String(c.questionId)] || []).push(c); });
 
-  const stat = {};
+  // ความถูก-ผิดรายข้อต่อคน (เฉพาะ attempt ล่าสุด) + จำนวนเลือกแต่ละตัวเลือก
+  const perAttempt = {};
+  const selCount = {};
   answers.forEach(a => {
+    const at = String(a.attemptId);
+    if (!attemptIds[at]) return;
     const qid = String(a.questionId);
-    if (!stat[qid]) stat[qid] = { correct: 0, wrong: 0, byLabel: {} };
-    if (toBool(a.isCorrect)) stat[qid].correct++; else stat[qid].wrong++;
+    if (!perAttempt[at]) perAttempt[at] = {};
+    perAttempt[at][qid] = toBool(a.isCorrect) ? 1 : 0;
+    if (!selCount[qid]) selCount[qid] = {};
     const lb = String(a.selectedLabel || '(ไม่ตอบ)');
-    stat[qid].byLabel[lb] = (stat[qid].byLabel[lb] || 0) + 1;
+    selCount[qid][lb] = (selCount[qid][lb] || 0) + 1;
   });
 
-  const out = questions.map(q => {
+  const attempts = Object.keys(perAttempt);
+  const N = attempts.length;
+
+  // คะแนนรวม (จำนวนข้อถูก) ต่อคน
+  const totals = attempts.map(at => {
+    let s = 0; qids.forEach(qid => { s += (perAttempt[at][qid] || 0); });
+    return { attemptId: at, total: s };
+  });
+
+  // จำนวนตอบถูกรายข้อ
+  const correctCount = {}; qids.forEach(qid => { correctCount[qid] = 0; });
+  attempts.forEach(at => { qids.forEach(qid => { correctCount[qid] += (perAttempt[at][qid] || 0); }); });
+
+  // กลุ่มสูง/ต่ำ (27% หรือครึ่งหนึ่งถ้ากลุ่มเล็ก)
+  const sorted = totals.slice().sort((a, b) => b.total - a.total);
+  let g = Math.max(1, Math.round(N * 0.27));
+  if (g * 2 > N) g = Math.floor(N / 2);
+  const upper = sorted.slice(0, g).map(x => x.attemptId);
+  const lower = sorted.slice(N - g).map(x => x.attemptId);
+  const canDiscriminate = N >= 4 && g >= 1 && g * 2 <= N;
+
+  const threshold = 0.05 * N; // ตัวลวงทำงานถ้ามีคนเลือก ≥ 5%
+
+  const itemsOut = qs.map(q => {
     const qid = String(q.questionId);
-    const s = stat[qid] || { correct: 0, wrong: 0, byLabel: {} };
-    const cs = (choiceByQ[qid] || []);
+    const cs = (choiceByQ[qid] || []).slice().sort((a, b) => ordOf(a) - ordOf(b));
+    const cCount = correctCount[qid] || 0;
+    const p = N > 0 ? cCount / N : 0;
+
+    let D = null;
+    if (canDiscriminate) {
+      let Hc = 0, Lc = 0;
+      upper.forEach(at => { Hc += (perAttempt[at][qid] || 0); });
+      lower.forEach(at => { Lc += (perAttempt[at][qid] || 0); });
+      D = (Hc / g) - (Lc / g);
+    }
+
+    let totalDistractors = 0, functioning = 0;
+    const choicesOut = cs.map(c => {
+      const cnt = (selCount[qid] && selCount[qid][String(c.label)]) || 0;
+      const isCorrect = toBool(c.isCorrect);
+      let nf = false;
+      if (!isCorrect) {
+        totalDistractors++;
+        if (cnt >= threshold && cnt > 0) functioning++; else nf = true;
+      }
+      return { label: c.label, choiceText: c.choiceText, isCorrect, count: cnt, nonFunctioning: nf };
+    });
+    const DE = totalDistractors > 0 ? Math.round((functioning / totalDistractors) * 10000) / 100 : null;
+
     return {
-      questionId: q.questionId, order: Number(q.ord) || 0, questionText: q.questionText,
-      correct: s.correct, wrong: s.wrong,
-      choices: cs.map(c => ({
-        label: c.label, choiceText: c.choiceText, isCorrect: toBool(c.isCorrect),
-        count: s.byLabel[String(c.label)] || 0
-      }))
+      questionId: q.questionId, order: ordOf(q), questionText: q.questionText,
+      correct: cCount, wrong: N - cCount,
+      p: Math.round(p * 100) / 100,
+      discrimination: D === null ? null : Math.round(D * 100) / 100,
+      distractorEfficiency: DE,
+      choices: choicesOut
     };
   });
-  return ok({ exam: examMeta(exam), questions: out });
+
+  // ---- ภาพรวม ----
+  let kr20 = null, meanScore = 0, sdScore = 0;
+  if (N > 0) {
+    const sum = totals.reduce((a, x) => a + x.total, 0);
+    meanScore = sum / N;
+    const variance = totals.reduce((a, x) => a + Math.pow(x.total - meanScore, 2), 0) / N;
+    sdScore = Math.sqrt(variance);
+    if (k > 1 && variance > 0 && N >= 2) {
+      let sumPQ = 0;
+      qids.forEach(qid => { const pp = correctCount[qid] / N; sumPQ += pp * (1 - pp); });
+      kr20 = (k / (k - 1)) * (1 - sumPQ / variance);
+      if (kr20 < 0) kr20 = 0; if (kr20 > 1) kr20 = 1;
+    }
+  }
+  const meanP = (k > 0 && N > 0) ? qids.reduce((a, qid) => a + (correctCount[qid] / N), 0) / k : 0;
+  const dVals = itemsOut.filter(it => it.discrimination !== null).map(it => it.discrimination);
+  const meanD = dVals.length ? dVals.reduce((a, x) => a + x, 0) / dVals.length : null;
+
+  let good = 0, fair = 0, poor = 0;
+  itemsOut.forEach(it => {
+    if (it.discrimination === null) return;
+    if (it.discrimination >= 0.3) good++; else if (it.discrimination >= 0.2) fair++; else poor++;
+  });
+
+  const overall = {
+    numStudents: N, numItems: k,
+    meanDifficulty: Math.round(meanP * 100) / 100,
+    meanDiscrimination: meanD === null ? null : Math.round(meanD * 100) / 100,
+    kr20: kr20 === null ? null : Math.round(kr20 * 1000) / 1000,
+    validityMax: kr20 === null ? null : Math.round(Math.sqrt(kr20) * 1000) / 1000,
+    meanScore: Math.round(meanScore * 100) / 100,
+    sdScore: Math.round(sdScore * 100) / 100,
+    quality: { good, fair, poor },
+    groupSize: g,
+    enoughData: canDiscriminate
+  };
+
+  return { exam: examMetaObj, overall, questions: itemsOut };
 }
 
 async function resetAttempt(params, env) {

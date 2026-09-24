@@ -988,6 +988,35 @@ S0001,ด.ช.,ตัวอย่าง ใจดี,ป.5,ป.5/1,10
       $('anExam').addEventListener('change', renderAnalysis);
     } catch (err) { showErr(el, err); }
   }
+  // ---- ตัวช่วยแปลผลค่าสถิติ ----
+  function difficultyInfo(p) {
+    if (p == null) return { text: '-', cls: 'badge-gray' };
+    if (p < 0.20) return { text: 'ยากมาก', cls: 'badge-red' };
+    if (p > 0.80) return { text: 'ง่ายมาก', cls: 'badge-yellow' };
+    return { text: 'เหมาะสม', cls: 'badge-green' };
+  }
+  function discriminationInfo(d) {
+    if (d == null) return { text: 'ข้อมูลไม่พอ', cls: 'badge-gray' };
+    if (d < 0) return { text: 'ติดลบ (ตรวจเฉลย)', cls: 'badge-red' };
+    if (d < 0.20) return { text: 'ต้องปรับปรุง', cls: 'badge-red' };
+    if (d < 0.30) return { text: 'พอใช้', cls: 'badge-yellow' };
+    if (d < 0.40) return { text: 'ดี', cls: 'badge-green' };
+    return { text: 'ดีมาก', cls: 'badge-green' };
+  }
+  function deInfo(de) {
+    if (de == null) return { cls: 'badge-gray' };
+    if (de >= 75) return { cls: 'badge-green' };
+    if (de >= 50) return { cls: 'badge-yellow' };
+    return { cls: 'badge-red' };
+  }
+  function reliabilityInfo(kr) {
+    if (kr == null) return { text: 'ข้อมูลไม่พอ', cls: 'badge-gray' };
+    if (kr >= 0.80) return { text: 'สูง/ดีมาก', cls: 'badge-green' };
+    if (kr >= 0.70) return { text: 'ยอมรับได้', cls: 'badge-yellow' };
+    return { text: 'ต่ำ (ควรปรับปรุง)', cls: 'badge-red' };
+  }
+  function fmt(v) { return v == null ? '-' : v; }
+
   async function renderAnalysis() {
     const examId = $('anExam').value;
     const box = $('anContent');
@@ -996,29 +1025,91 @@ S0001,ด.ช.,ตัวอย่าง ใจดี,ป.5,ป.5/1,10
     try {
       const data = await teacherCall('getAnalysis', { examId });
       if (!data.questions.length) { box.innerHTML = '<div class="muted">ไม่มีข้อมูล</div>'; return; }
-      box.innerHTML = data.questions.map((q, i) => {
-        const total = q.correct + q.wrong;
-        const pctCorrect = total ? Math.round(q.correct / total * 100) : 0;
-        return `<div class="card">
-          <div class="row spread">
-            <b>ข้อ ${i + 1}. ${esc(q.questionText)}</b>
-            <span class="badge ${pctCorrect >= 50 ? 'badge-green' : 'badge-red'}">ถูก ${pctCorrect}%</span>
+      if (!data.overall) {
+        box.innerHTML = '<div class="alert alert-warning">ฟีเจอร์วิเคราะห์เชิงลึกต้องอัปเดตโค้ด Backend (Worker) เป็นเวอร์ชันล่าสุดก่อน — ดูวิธีที่ cloudflare/README.md แล้ว Deploy ใหม่</div>';
+        return;
+      }
+      const o = data.overall;
+      if (!o.numStudents) {
+        box.innerHTML = '<div class="card muted text-center">ยังไม่มีผู้เข้าสอบชุดนี้ จึงยังวิเคราะห์ไม่ได้</div>';
+        return;
+      }
+
+      const rel = reliabilityInfo(o.kr20);
+      const smallNote = o.numStudents < 10
+        ? `<div class="alert alert-warning" style="font-size:13px">มีผู้เข้าสอบ ${o.numStudents} คน — ค่าทางสถิติจะแม่นยำขึ้นเมื่อมีผู้สอบมากขึ้น (แนะนำ ≥ 10–30 คน)</div>`
+        : '';
+
+      // ---- การ์ดสรุปภาพรวม ----
+      let html = `
+        <div class="card">
+          <div class="card-title">📈 สรุปภาพรวมของข้อสอบ</div>
+          ${smallNote}
+          <div class="stats-grid">
+            ${stat('👥', o.numStudents, 'ผู้เข้าสอบ')}
+            ${stat('📝', o.numItems, 'จำนวนข้อ')}
+            ${stat('📊', o.meanScore + '/' + o.numItems, 'คะแนนเฉลี่ย')}
+            ${stat('📉', o.sdScore, 'ส่วนเบี่ยงเบน (SD)')}
+            ${stat('🎯', fmt(o.meanDifficulty), 'ความยากเฉลี่ย (P)')}
+            ${stat('🔍', fmt(o.meanDiscrimination), 'อำนาจจำแนกเฉลี่ย (r)')}
           </div>
-          <div class="muted mb-1">ตอบถูก ${q.correct} คน • ตอบผิด ${q.wrong} คน</div>
+          <div class="row mt-2" style="gap:20px;flex-wrap:wrap">
+            <div>
+              <div class="muted" style="font-size:13px">ความเชื่อมั่น (Reliability, KR-20)</div>
+              <div style="font-size:26px;font-weight:800;color:var(--primary)">${fmt(o.kr20)}
+                <span class="badge ${rel.cls}" style="vertical-align:middle">${rel.text}</span></div>
+            </div>
+            <div>
+              <div class="muted" style="font-size:13px">ความเที่ยงตรงสูงสุด (โดยประมาณ = √ความเชื่อมั่น)</div>
+              <div style="font-size:26px;font-weight:800;color:var(--gray-600)">${fmt(o.validityMax)}</div>
+            </div>
+          </div>
+          <div class="mt-2" style="font-size:13px">
+            คุณภาพข้อสอบ (ตามอำนาจจำแนก):
+            <span class="badge badge-green">ดี ${o.quality.good} ข้อ</span>
+            <span class="badge badge-yellow">พอใช้ ${o.quality.fair} ข้อ</span>
+            <span class="badge badge-red">ควรปรับปรุง ${o.quality.poor} ข้อ</span>
+          </div>
+          <p class="muted mt-2" style="font-size:12px;line-height:1.7">
+            <b>หมายเหตุ:</b> ค่า "ความเที่ยงตรง" ที่แท้จริงประเมินจากผู้เชี่ยวชาญ (IOC) คำนวณจากคำตอบล้วนไม่ได้
+            ค่าที่แสดงเป็น "เพดานสูงสุดตามทฤษฎี (√ความเชื่อมั่น)" ใช้เป็นแนวเทียบเท่านั้น •
+            อำนาจจำแนกคำนวณจากกลุ่มสูง/ต่ำ กลุ่มละ ${o.groupSize} คน (27%)
+          </p>
+        </div>
+        <h2 class="mb-2 mt-3">วิเคราะห์รายข้อ</h2>`;
+
+      // ---- รายข้อ ----
+      html += data.questions.map((q, i) => {
+        const total = q.correct + q.wrong;
+        const di = difficultyInfo(q.p);
+        const di2 = discriminationInfo(q.discrimination);
+        const de = deInfo(q.distractorEfficiency);
+        return `<div class="card">
+          <div class="mb-1"><b>ข้อ ${i + 1}. ${esc(q.questionText)}</b></div>
+          <div class="row mb-2" style="gap:8px;flex-wrap:wrap">
+            <span class="badge ${di.cls}">P (ความยาก) = ${fmt(q.p)} · ${di.text}</span>
+            <span class="badge ${ di2.cls }">r (อำนาจจำแนก) = ${fmt(q.discrimination)} · ${ di2.text }</span>
+            <span class="badge ${de.cls}">DE (ตัวลวง) = ${q.distractorEfficiency == null ? '-' : q.distractorEfficiency + '%'}</span>
+          </div>
+          <div class="muted mb-1" style="font-size:13px">ตอบถูก ${q.correct} คน • ตอบผิด ${q.wrong} คน</div>
           ${q.choices.map(c => {
             const pct = total ? Math.round((c.count / total) * 100) : 0;
+            const nf = c.nonFunctioning;
             return `<div style="margin:6px 0">
               <div class="row spread" style="font-size:14px">
-                <span>${c.isCorrect ? '✅ ' : ''}${esc(c.label)}. ${esc(c.choiceText)}</span>
-                <span class="muted">${c.count} คน</span>
+                <span>${c.isCorrect ? '✅ ' : ''}${esc(c.label)}. ${esc(c.choiceText)}
+                  ${nf ? '<span class="badge badge-gray" style="font-size:11px">ตัวลวงไม่ทำงาน</span>' : ''}</span>
+                <span class="muted">${c.count} คน (${pct}%)</span>
               </div>
               <div style="background:var(--gray-200);border-radius:6px;height:10px;overflow:hidden">
-                <div style="width:${pct}%;height:100%;background:${c.isCorrect ? 'var(--success)' : 'var(--primary)'}"></div>
+                <div style="width:${pct}%;height:100%;background:${c.isCorrect ? 'var(--success)' : (nf ? 'var(--gray-300)' : 'var(--primary)')}"></div>
               </div>
             </div>`;
           }).join('')}
         </div>`;
       }).join('');
+
+      box.innerHTML = html;
       typeset(box);
     } catch (err) { showErr(box, err); }
   }

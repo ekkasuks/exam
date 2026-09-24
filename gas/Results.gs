@@ -242,11 +242,36 @@ function getAnalysis(params) {
 
   var questions = findRows(SHEETS.QUESTIONS, function (r) { return String(r.examId) === examId; });
   var choices = findRows(SHEETS.CHOICES, function (r) { return String(r.examId) === examId; });
+  var results = findRows(SHEETS.RESULTS, function (r) {
+    return String(r.examId) === examId && String(r.status) === 'submitted';
+  });
   var answers = findRows(SHEETS.ANSWERS, function (r) { return String(r.examId) === examId; });
 
-  questions.sort(function (a, b) { return (Number(a.order) || 0) - (Number(b.order) || 0); });
+  return ok(computeAnalysis(examMeta(exam), questions, choices, results, answers, 'order'));
+}
 
-  // ตัวเลือกต่อคำถาม
+/**
+ * วิเคราะห์ข้อสอบเชิงจิตมิติ (item analysis)
+ * รายข้อ: ค่าความยาก P, อำนาจจำแนก D (กลุ่มสูง-ต่ำ 27%), ประสิทธิภาพตัวลวง DE
+ * ภาพรวม: ความเชื่อมั่น KR-20, ความเที่ยงตรงสูงสุด (√KR20), ค่าเฉลี่ย P/D, สรุปคุณภาพ
+ */
+function computeAnalysis(examMetaObj, questions, choices, results, answers, ordKey) {
+  ordKey = ordKey || 'order';
+  function ordOf(r) { return Number(r[ordKey] != null ? r[ordKey] : r.order) || 0; }
+
+  // ครั้งล่าสุดต่อคน
+  var byStudent = {};
+  results.forEach(function (r) {
+    var sid = String(r.studentId).trim().toUpperCase();
+    if (!byStudent[sid] || String(r.submittedAt) > String(byStudent[sid].submittedAt)) byStudent[sid] = r;
+  });
+  var attemptIds = {};
+  Object.keys(byStudent).forEach(function (sid) { attemptIds[String(byStudent[sid].attemptId)] = true; });
+
+  var qs = questions.slice().sort(function (a, b) { return ordOf(a) - ordOf(b); });
+  var qids = qs.map(function (q) { return String(q.questionId); });
+  var k = qids.length;
+
   var choiceByQ = {};
   choices.forEach(function (c) {
     var qid = String(c.questionId);
@@ -254,39 +279,113 @@ function getAnalysis(params) {
     choiceByQ[qid].push(c);
   });
 
-  // นับคำตอบต่อคำถาม/ต่อตัวเลือก
-  var stat = {}; // qid -> {correct, wrong, byLabel:{}}
+  var perAttempt = {};
+  var selCount = {};
   answers.forEach(function (a) {
+    var at = String(a.attemptId);
+    if (!attemptIds[at]) return;
     var qid = String(a.questionId);
-    if (!stat[qid]) stat[qid] = { correct: 0, wrong: 0, byLabel: {} };
-    if (toBool(a.isCorrect)) stat[qid].correct++; else stat[qid].wrong++;
+    if (!perAttempt[at]) perAttempt[at] = {};
+    perAttempt[at][qid] = toBool(a.isCorrect) ? 1 : 0;
+    if (!selCount[qid]) selCount[qid] = {};
     var lb = String(a.selectedLabel || '(ไม่ตอบ)');
-    stat[qid].byLabel[lb] = (stat[qid].byLabel[lb] || 0) + 1;
+    selCount[qid][lb] = (selCount[qid][lb] || 0) + 1;
   });
 
-  var out = questions.map(function (q) {
+  var attempts = Object.keys(perAttempt);
+  var N = attempts.length;
+
+  var totals = attempts.map(function (at) {
+    var s = 0; qids.forEach(function (qid) { s += (perAttempt[at][qid] || 0); });
+    return { attemptId: at, total: s };
+  });
+
+  var correctCount = {}; qids.forEach(function (qid) { correctCount[qid] = 0; });
+  attempts.forEach(function (at) { qids.forEach(function (qid) { correctCount[qid] += (perAttempt[at][qid] || 0); }); });
+
+  var sorted = totals.slice().sort(function (a, b) { return b.total - a.total; });
+  var g = Math.max(1, Math.round(N * 0.27));
+  if (g * 2 > N) g = Math.floor(N / 2);
+  var upper = sorted.slice(0, g).map(function (x) { return x.attemptId; });
+  var lower = sorted.slice(N - g).map(function (x) { return x.attemptId; });
+  var canDiscriminate = N >= 4 && g >= 1 && g * 2 <= N;
+
+  var threshold = 0.05 * N;
+
+  var itemsOut = qs.map(function (q) {
     var qid = String(q.questionId);
-    var cs = (choiceByQ[qid] || []).slice();
-    cs.sort(function (a, b) { return (Number(a.order) || 0) - (Number(b.order) || 0); });
-    var s = stat[qid] || { correct: 0, wrong: 0, byLabel: {} };
+    var cs = (choiceByQ[qid] || []).slice().sort(function (a, b) { return ordOf(a) - ordOf(b); });
+    var cCount = correctCount[qid] || 0;
+    var p = N > 0 ? cCount / N : 0;
+
+    var D = null;
+    if (canDiscriminate) {
+      var Hc = 0, Lc = 0;
+      upper.forEach(function (at) { Hc += (perAttempt[at][qid] || 0); });
+      lower.forEach(function (at) { Lc += (perAttempt[at][qid] || 0); });
+      D = (Hc / g) - (Lc / g);
+    }
+
+    var totalDistractors = 0, functioning = 0;
+    var choicesOut = cs.map(function (c) {
+      var cnt = (selCount[qid] && selCount[qid][String(c.label)]) || 0;
+      var isCorrect = toBool(c.isCorrect);
+      var nf = false;
+      if (!isCorrect) {
+        totalDistractors++;
+        if (cnt >= threshold && cnt > 0) functioning++; else nf = true;
+      }
+      return { label: c.label, choiceText: c.choiceText, isCorrect: isCorrect, count: cnt, nonFunctioning: nf };
+    });
+    var DE = totalDistractors > 0 ? Math.round((functioning / totalDistractors) * 10000) / 100 : null;
+
     return {
-      questionId: q.questionId,
-      order: Number(q.order) || 0,
-      questionText: q.questionText,
-      correct: s.correct,
-      wrong: s.wrong,
-      choices: cs.map(function (c) {
-        return {
-          label: c.label,
-          choiceText: c.choiceText,
-          isCorrect: toBool(c.isCorrect),
-          count: s.byLabel[String(c.label)] || 0
-        };
-      })
+      questionId: q.questionId, order: ordOf(q), questionText: q.questionText,
+      correct: cCount, wrong: N - cCount,
+      p: Math.round(p * 100) / 100,
+      discrimination: D === null ? null : Math.round(D * 100) / 100,
+      distractorEfficiency: DE,
+      choices: choicesOut
     };
   });
 
-  return ok({ exam: examMeta(exam), questions: out });
+  var kr20 = null, meanScore = 0, sdScore = 0;
+  if (N > 0) {
+    var sum = totals.reduce(function (a, x) { return a + x.total; }, 0);
+    meanScore = sum / N;
+    var variance = totals.reduce(function (a, x) { return a + Math.pow(x.total - meanScore, 2); }, 0) / N;
+    sdScore = Math.sqrt(variance);
+    if (k > 1 && variance > 0 && N >= 2) {
+      var sumPQ = 0;
+      qids.forEach(function (qid) { var pp = correctCount[qid] / N; sumPQ += pp * (1 - pp); });
+      kr20 = (k / (k - 1)) * (1 - sumPQ / variance);
+      if (kr20 < 0) kr20 = 0; if (kr20 > 1) kr20 = 1;
+    }
+  }
+  var meanP = (k > 0 && N > 0) ? qids.reduce(function (a, qid) { return a + (correctCount[qid] / N); }, 0) / k : 0;
+  var dVals = itemsOut.filter(function (it) { return it.discrimination !== null; }).map(function (it) { return it.discrimination; });
+  var meanD = dVals.length ? dVals.reduce(function (a, x) { return a + x; }, 0) / dVals.length : null;
+
+  var good = 0, fair = 0, poor = 0;
+  itemsOut.forEach(function (it) {
+    if (it.discrimination === null) return;
+    if (it.discrimination >= 0.3) good++; else if (it.discrimination >= 0.2) fair++; else poor++;
+  });
+
+  var overall = {
+    numStudents: N, numItems: k,
+    meanDifficulty: Math.round(meanP * 100) / 100,
+    meanDiscrimination: meanD === null ? null : Math.round(meanD * 100) / 100,
+    kr20: kr20 === null ? null : Math.round(kr20 * 1000) / 1000,
+    validityMax: kr20 === null ? null : Math.round(Math.sqrt(kr20) * 1000) / 1000,
+    meanScore: Math.round(meanScore * 100) / 100,
+    sdScore: Math.round(sdScore * 100) / 100,
+    quality: { good: good, fair: fair, poor: poor },
+    groupSize: g,
+    enoughData: canDiscriminate
+  };
+
+  return { exam: examMetaObj, overall: overall, questions: itemsOut };
 }
 
 // ============ อนุญาตสอบซ้ำรายบุคคล (ลบผลเดิม) ============
