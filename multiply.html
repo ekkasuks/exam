@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ทดสอบสูตรคูณ</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    .mult-problem { font-size: 56px; font-weight: 800; text-align: center; margin: 24px 0; color: var(--gray-800); }
+    .mult-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .mult-choice {
+      font-size: 32px; font-weight: 800; padding: 26px 10px; border-radius: 16px;
+      border: 3px solid var(--gray-200); background: #fff; cursor: pointer; transition: all .1s;
+      font-family: inherit; color: var(--gray-800);
+    }
+    .mult-choice:hover { border-color: var(--primary); background: var(--primary-light); }
+    .mult-choice.correct { border-color: var(--success); background: var(--success-light); color: var(--success); }
+    .mult-choice.wrong { border-color: var(--danger); background: var(--danger-light); color: var(--danger); }
+    .mult-stat { display: flex; gap: 10px; align-items: center; }
+    .mult-progress-bar { height: 8px; background: var(--gray-200); border-radius: 99px; overflow: hidden; margin-top: 10px; }
+    .mult-progress-bar > div { height: 100%; background: #7c3aed; transition: width .2s; }
+    @media (max-width: 480px){ .mult-problem{font-size:44px;} .mult-choice{font-size:26px;padding:22px 6px;} }
+  </style>
+</head>
+<body>
+  <div class="exam-header">
+    <div class="exam-header-inner" style="max-width:560px">
+      <div>
+        <div style="font-weight:700;">✖️ ทดสอบสูตรคูณ</div>
+        <div class="muted" id="studentName" style="font-size:13px;"></div>
+      </div>
+      <div class="timer" id="timer">10:00</div>
+    </div>
+  </div>
+
+  <div class="container" style="max-width:560px;">
+    <div id="loading" class="loader"><div class="spinner"></div>กำลังเตรียมโจทย์...</div>
+
+    <div id="testArea" class="hidden">
+      <div class="row spread" style="font-size:15px;font-weight:600">
+        <span>ข้อ <span id="qNum">1</span>/40</span>
+        <span style="color:var(--success)">ตอบถูก <span id="correctCount">0</span> ข้อ</span>
+      </div>
+      <div class="mult-progress-bar"><div id="progressBar" style="width:0%"></div></div>
+
+      <div class="question-box mt-2">
+        <div class="mult-problem" id="problem">— × — = ?</div>
+        <div class="mult-choices" id="choices"></div>
+      </div>
+    </div>
+
+    <div id="resultArea" class="hidden"></div>
+    <div id="errorArea" class="hidden"></div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/multiply.js"></script>
+</body>
+</html>

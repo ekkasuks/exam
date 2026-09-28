@@ -86,6 +86,13 @@ function route(action, params) {
     case 'getSettings': return getSettingsAction(params);
     case 'saveSettings': return saveSettingsAction(params);
 
+    // ทดสอบสูตรคูณ
+    case 'submitMultTest': return submitMultTest(params);
+    case 'getMultSettings': return getMultSettingsAction(params);
+    case 'saveMultSettings': return saveMultSettingsAction(params);
+    case 'getMultResults': return getMultResults(params);
+    case 'resetMultAttempt': return resetMultAttempt(params);
+
     default:
       return fail('ไม่รู้จักคำสั่ง: ' + action, 'UNKNOWN_ACTION');
   }

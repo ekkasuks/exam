@@ -60,6 +60,9 @@
         // เก็บรายการข้อสอบ + ผลสอบไว้ให้หน้า student ใช้ทันที (ลด request)
         sessionStorage.setItem('exam_list', JSON.stringify(data.exams || []));
         sessionStorage.setItem('exam_results', JSON.stringify(data.results || []));
+        sessionStorage.setItem('exam_mult', JSON.stringify({
+          multEnabled: data.multEnabled, multDone: data.multDone, multScore: data.multScore, multTotal: data.multTotal
+        }));
         location.href = 'student.html';
       } catch (err) {
         showAlert(err.message || 'เข้าสู่ระบบไม่สำเร็จ');

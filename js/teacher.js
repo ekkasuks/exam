@@ -92,7 +92,7 @@
   const PAGE_TITLES = {
     dashboard: '🏠 Dashboard', students: '👨‍🎓 นักเรียน', classes: '🏫 ห้องเรียน',
     subjects: '📚 รายวิชา', exams: '📝 ข้อสอบ', import: '📥 นำเข้าข้อสอบ',
-    results: '📊 ผลการสอบ', analysis: '📈 วิเคราะห์ข้อสอบ', settings: '⚙️ ตั้งค่า'
+    results: '📊 ผลการสอบ', analysis: '📈 วิเคราะห์ข้อสอบ', mult: '✖️ ทดสอบสูตรคูณ', settings: '⚙️ ตั้งค่า'
   };
 
   function navigate(page) {
@@ -104,7 +104,7 @@
     ({
       dashboard: pageDashboard, students: pageStudents, classes: pageClasses,
       subjects: pageSubjects, exams: pageExams, import: pageImport,
-      results: pageResults, analysis: pageAnalysis, settings: pageSettings
+      results: pageResults, analysis: pageAnalysis, mult: pageMult, settings: pageSettings
     }[page] || pageDashboard)(el);
   }
 
@@ -1114,6 +1114,87 @@ S0001,ด.ช.,ตัวอย่าง ใจดี,ป.5,ป.5/1,10
     } catch (err) { showErr(box, err); }
   }
 
+  // ================= สูตรคูณ =================
+  let lastMult = null;
+  async function pageMult(el) {
+    loading(el);
+    try {
+      const classes = await loadClasses();
+      const levels = [...new Set(classes.map(c => c.level))];
+      const rooms = [...new Set(classes.map(c => c.room))];
+      const cfg = await teacherCall('getMultSettings');
+      const enabled = new Set(cfg.levels || []);
+      el.innerHTML = `
+        <h1 class="page-title">✖️ ทดสอบสูตรคูณ</h1>
+        <div class="card">
+          <div class="card-title">เปิดทดสอบสำหรับระดับชั้น</div>
+          <p class="muted mb-2">เลือกชั้นที่ให้นักเรียนทดสอบสูตรคูณ (แม่ 2–12 • 40 ข้อ • 10 นาที • สุ่มโจทย์ทุกครั้ง)</p>
+          <div id="multLevels">${levels.length ? levels.map(l =>
+            `<label class="checkbox-row"><input type="checkbox" value="${esc(l)}" ${enabled.has(l) ? 'checked' : ''}><span>${esc(l)}</span></label>`).join('')
+            : '<span class="muted">ยังไม่มีระดับชั้น (เพิ่มที่เมนูห้องเรียนก่อน)</span>'}</div>
+          <button class="btn mt-1" onclick="TEACHER.saveMultLevels()">💾 บันทึกการตั้งค่า</button>
+        </div>
+        <div class="toolbar">
+          <select id="multRoom"><option value="">ทุกห้อง</option>${rooms.map(r => `<option>${esc(r)}</option>`).join('')}</select>
+          <button class="btn btn-sm btn-ghost" id="multExport">⬇️ CSV</button>
+          <button class="btn btn-sm btn-ghost" onclick="window.print()">🖨️ พิมพ์</button>
+          <button class="btn btn-sm btn-ghost" onclick="TEACHER.go('mult')">🔄 รีเฟรช</button>
+        </div>
+        <div id="multResults"><div class="loader"><div class="spinner"></div></div></div>`;
+      $('multRoom').addEventListener('change', renderMultResults);
+      $('multExport').addEventListener('click', exportMult);
+      renderMultResults();
+    } catch (err) { showErr(el, err); }
+  }
+
+  async function renderMultResults() {
+    const box = $('multResults');
+    box.innerHTML = '<div class="loader"><div class="spinner"></div></div>';
+    try {
+      const data = await teacherCall('getMultResults', { room: $('multRoom').value });
+      lastMult = data;
+      if (!data.table.length) {
+        box.innerHTML = '<div class="card muted text-center">ยังไม่มีนักเรียนในชั้นที่เปิดทดสอบ<br>(เลือกชั้นด้านบนแล้วกดบันทึก)</div>';
+        return;
+      }
+      const done = data.table.filter(r => r.done).length;
+      box.innerHTML = `<div class="muted mb-1">เปิดชั้น: <b>${(data.levels || []).join(', ') || '-'}</b> • ทำแล้ว ${done}/${data.table.length} คน</div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>เลขที่</th><th>รหัส</th><th>ชื่อ</th><th>ห้อง</th><th class="center">คะแนน</th><th class="center">ร้อยละ</th><th></th></tr></thead>
+          <tbody>${data.table.map(r => `<tr>
+            <td class="center">${esc(r.number)}</td>
+            <td>${esc(r.studentId)}</td>
+            <td>${esc(r.title || '')} ${esc(r.fullName)}</td>
+            <td>${esc(r.room)}</td>
+            <td class="center">${r.done ? r.score + '/' + r.total : '<span class="badge badge-gray">ยังไม่ทำ</span>'}</td>
+            <td class="center">${r.done ? r.percent + '%' : '-'}</td>
+            <td class="center">${r.done ? `<button class="btn btn-sm btn-danger no-print" onclick="TEACHER.resetMult('${esc(r.studentId)}')">ล้างคะแนน</button>` : ''}</td>
+          </tr>`).join('')}</tbody></table></div>`;
+    } catch (err) { showErr(box, err); }
+  }
+
+  async function saveMultLevels() {
+    const levels = Array.prototype.slice.call(document.querySelectorAll('#multLevels input:checked')).map(c => c.value);
+    try { await teacherCall('saveMultSettings', { levels }); toast('บันทึกการตั้งค่าแล้ว'); renderMultResults(); }
+    catch (err) { toast(err.message, 'error'); }
+  }
+
+  async function resetMult(studentId) {
+    if (!confirm('ล้างคะแนนสูตรคูณของ ' + studentId + ' เพื่อให้ทำใหม่?')) return;
+    try { await teacherCall('resetMultAttempt', { studentId }); toast('ล้างคะแนนแล้ว'); renderMultResults(); }
+    catch (err) { toast(err.message, 'error'); }
+  }
+
+  function exportMult() {
+    if (!lastMult || !lastMult.table.length) return toast('ไม่มีข้อมูล', 'error');
+    const header = ['เลขที่', 'รหัส', 'ชื่อ-นามสกุล', 'ห้อง', 'คะแนน', 'เต็ม', 'ร้อยละ'];
+    const data = lastMult.table.map(r => [
+      r.number, r.studentId, (r.title || '') + ' ' + r.fullName, r.room,
+      r.done ? r.score : '', r.total, r.done ? r.percent : ''
+    ]);
+    downloadCsv('ผลทดสอบสูตรคูณ', header, data);
+  }
+
   // ================= SETTINGS =================
   async function pageSettings(el) {
     loading(el);
@@ -1160,7 +1241,8 @@ S0001,ด.ช.,ตัวอย่าง ใจดี,ป.5,ป.5/1,10
     editExam, toggleStatus, deleteExam,
     addQuestion, delQ, moveQ, addChoice, delChoice, setCorrect, uploadQImg, removeQImg, saveExam,
     parseWord, importToEditor,
-    sortRes, resetAttempt
+    sortRes, resetAttempt,
+    saveMultLevels, resetMult
   };
 
   // เข้าสู่แผงควบคุมทันทีถ้ายังมี session ครูอยู่ (วางไว้ท้ายสุดหลังประกาศตัวแปรครบ)

@@ -20,6 +20,28 @@
 
   const listEl = document.getElementById('examList');
   const resultsEl = document.getElementById('resultsSection');
+  const multEl = document.getElementById('multSection');
+
+  // ---- การ์ดทดสอบสูตรคูณ (แสดงเมื่อครูเปิดสำหรับชั้นนี้) ----
+  function renderMult(data) {
+    if (!multEl) return;
+    if (!data || !data.multEnabled) { multEl.innerHTML = ''; return; }
+    let inner;
+    if (data.multDone) {
+      inner = `<span class="badge badge-gray">✔ ทำเสร็จแล้ว</span>
+        <span class="badge badge-green">ตอบถูก ${data.multScore}/${data.multTotal} ข้อ</span>
+        <div class="muted mt-1" style="font-size:13px">ถ้าต้องการทำใหม่ กรุณาแจ้งคุณครูให้ล้างคะแนน</div>`;
+    } else {
+      inner = `<button class="btn btn-lg" style="max-width:280px" onclick="location.href='multiply.html'">▶ เริ่มทดสอบสูตรคูณ</button>`;
+    }
+    multEl.innerHTML = `
+      <div class="exam-card" style="border-left-color:#7c3aed">
+        <div class="badge" style="background:#ede9fe;color:#6d28d9">✖️ ทดสอบสูตรคูณ</div>
+        <h3 class="mt-1">ท่องสูตรคูณ แม่ 2–12</h3>
+        <div class="meta"><span>📝 40 ข้อ</span><span>⏱️ 10 นาที</span><span>🎲 สุ่มโจทย์ทุกครั้ง</span></div>
+        ${inner}
+      </div>`;
+  }
 
   // ---- รายงานผลสอบของฉัน (วิชา / ชื่อทดสอบ / คะแนน / ผ่าน-ไม่ผ่าน เกณฑ์ 50%) ----
   function renderResults(results) {
@@ -95,8 +117,12 @@
       Auth.setStudent(data.student);
       sessionStorage.setItem('exam_list', JSON.stringify(data.exams || []));
       sessionStorage.setItem('exam_results', JSON.stringify(data.results || []));
+      sessionStorage.setItem('exam_mult', JSON.stringify({
+        multEnabled: data.multEnabled, multDone: data.multDone, multScore: data.multScore, multTotal: data.multTotal
+      }));
       render(data.exams);
       renderResults(data.results || []);
+      renderMult(data);
     } catch (err) {
       if (!silent) {
         listEl.innerHTML = `<div class="alert alert-error">${escapeHtml(err.message)}</div>
@@ -124,6 +150,7 @@
     try {
       render(JSON.parse(cached));
       renderResults(JSON.parse(sessionStorage.getItem('exam_results') || '[]'));
+      renderMult(JSON.parse(sessionStorage.getItem('exam_mult') || '{}'));
       reload(true); // รีเฟรชเงียบ ๆ
     } catch (e) { reload(false); }
   } else {

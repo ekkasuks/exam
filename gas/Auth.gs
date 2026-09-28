@@ -32,7 +32,22 @@ function studentLogin(params) {
 
   var exams = listAvailableExamsForStudent(student);
   var results = buildStudentResults(student);
-  return ok({ student: info, exams: exams, results: results });
+
+  // ทดสอบสูตรคูณ
+  var multLevels = getMultLevels();
+  var multEnabled = multLevels.indexOf(String(student.level).trim()) !== -1;
+  var multDone = false, multScore = null, multTotal = null;
+  if (multEnabled) {
+    var mr = findOne(SHEETS.MULT_RESULTS, function (r) {
+      return String(r.studentId).trim().toUpperCase() === String(student.studentId).trim().toUpperCase();
+    });
+    if (mr) { multDone = true; multScore = Number(mr.score); multTotal = Number(mr.total); }
+  }
+
+  return ok({
+    student: info, exams: exams, results: results,
+    multEnabled: multEnabled, multDone: multDone, multScore: multScore, multTotal: multTotal
+  });
 }
 
 /** ผลสอบทั้งหมดของนักเรียน (ครั้งล่าสุดต่อชุด) + ผ่าน/ไม่ผ่าน (เกณฑ์ 50%) */

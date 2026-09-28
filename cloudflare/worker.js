@@ -153,6 +153,13 @@ async function route(action, params, env) {
     case 'getSettings': return await getSettingsAction(params, env);
     case 'saveSettings': return await saveSettingsAction(params, env);
 
+    // ทดสอบสูตรคูณ
+    case 'submitMultTest': return await submitMultTest(params, env);
+    case 'getMultSettings': return await getMultSettings(params, env);
+    case 'saveMultSettings': return await saveMultSettings(params, env);
+    case 'getMultResults': return await getMultResults(params, env);
+    case 'resetMultAttempt': return await resetMultAttempt(params, env);
+
     default:
       return fail('ไม่รู้จักคำสั่ง: ' + action, 'UNKNOWN_ACTION');
   }
@@ -178,7 +185,8 @@ const SCHEMA_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS answers (answerId TEXT PRIMARY KEY, attemptId TEXT, examId TEXT, studentId TEXT, questionId TEXT, selectedLabel TEXT, isCorrect INTEGER DEFAULT 0, score REAL DEFAULT 0)`,
   `CREATE INDEX IF NOT EXISTS idx_answers_exam ON answers(examId)`,
   `CREATE INDEX IF NOT EXISTS idx_answers_attempt ON answers(attemptId)`,
-  `CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)`
+  `CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)`,
+  `CREATE TABLE IF NOT EXISTS mult_results (studentId TEXT PRIMARY KEY, score INTEGER DEFAULT 0, total INTEGER DEFAULT 0, durationUsed INTEGER DEFAULT 0, submittedAt TEXT, academicYear TEXT)`
 ];
 const SEED_STATEMENTS = [
   `INSERT OR IGNORE INTO subjects (subjectId, name, status) VALUES
@@ -241,14 +249,30 @@ async function studentLogin(params, env) {
 
   const exams = await listAvailableExamsForStudent(env, student);
   const results = await buildStudentResults(env, student);
+
+  // ทดสอบสูตรคูณ: เปิดสำหรับชั้นนี้หรือไม่ + ทำไปแล้วหรือยัง
+  const multLevels = await getMultLevels(env);
+  const multEnabled = multLevels.indexOf(String(student.level).trim()) !== -1;
+  let multDone = false, multScore = null, multTotal = null;
+  if (multEnabled) {
+    const mr = await dbFirst(env, 'SELECT * FROM mult_results WHERE UPPER(studentId) = ?', studentId);
+    if (mr) { multDone = true; multScore = mr.score; multTotal = mr.total; }
+  }
+
   return ok({
     student: {
       studentId: student.studentId, title: student.title, fullName: student.fullName,
       level: student.level, room: student.room, number: student.number
     },
     exams,
-    results
+    results,
+    multEnabled, multDone, multScore, multTotal
   });
+}
+
+async function getMultLevels(env) {
+  const v = await getSetting(env, 'multLevels', '');
+  return String(v || '').split(',').map(s => s.trim()).filter(Boolean);
 }
 
 /** ผลสอบทั้งหมดของนักเรียน (ครั้งล่าสุดต่อชุด) พร้อมชื่อวิชา/ชื่อทดสอบ + ผ่าน/ไม่ผ่าน (เกณฑ์ 50%) */
@@ -1022,4 +1046,88 @@ async function resetAttempt(params, env) {
   rs.forEach(r => { stmts.push(env.DB.prepare('DELETE FROM answers WHERE attemptId = ?').bind(r.attemptId)); });
   await env.DB.batch(stmts);
   return ok({ removed: rs.length });
+}
+
+// ============ ทดสอบสูตรคูณ ============
+const MULT_TOTAL = 40;
+
+// นักเรียนส่งคำตอบ — ตรวจ a*b ที่ server, เก็บ 1 ผลต่อคน (ครูล้างได้)
+async function submitMultTest(params, env) {
+  const studentId = String(params.studentId || '').trim().toUpperCase();
+  const answers = params.answers || [];
+  const now = new Date();
+
+  const student = await dbFirst(env, 'SELECT * FROM students WHERE UPPER(studentId) = ?', studentId);
+  if (!student) return fail('ไม่พบนักเรียน', 'NO_STUDENT');
+
+  const multLevels = await getMultLevels(env);
+  if (multLevels.indexOf(String(student.level).trim()) === -1) {
+    return fail('ยังไม่เปิดทดสอบสูตรคูณสำหรับชั้นนี้', 'NOT_OPEN');
+  }
+  const prev = await dbFirst(env, 'SELECT studentId FROM mult_results WHERE UPPER(studentId) = ?', studentId);
+  if (prev) return fail('คุณทำแบบทดสอบสูตรคูณไปแล้ว', 'ALREADY_DONE');
+
+  let correct = 0;
+  answers.forEach(a => {
+    const x = Number(a.a), y = Number(a.b), ans = Number(a.answer);
+    if (x >= 2 && x <= 12 && y >= 2 && y <= 12 && !isNaN(ans) && ans === x * y) correct++;
+  });
+  if (correct > MULT_TOTAL) correct = MULT_TOTAL;
+
+  const startedAt = params.startedAt || '';
+  let durationUsed = 0;
+  const sd = toDate(startedAt);
+  if (sd) durationUsed = Math.round((now.getTime() - sd.getTime()) / 1000);
+
+  await dbRun(env,
+    'INSERT INTO mult_results (studentId,score,total,durationUsed,submittedAt,academicYear) VALUES (?,?,?,?,?,?)',
+    student.studentId, correct, MULT_TOTAL, durationUsed, now.toISOString(), await getSetting(env, 'academicYear'));
+
+  return ok({ score: correct, total: MULT_TOTAL });
+}
+
+async function getMultSettings(params, env) {
+  requireTeacher(params, env);
+  return ok({ levels: await getMultLevels(env) });
+}
+async function saveMultSettings(params, env) {
+  requireTeacher(params, env);
+  const levels = params.levels || [];
+  await setSetting(env, 'multLevels', Array.isArray(levels) ? levels.join(',') : String(levels));
+  return ok({ levels: await getMultLevels(env) });
+}
+
+async function getMultResults(params, env) {
+  requireTeacher(params, env);
+  const levels = await getMultLevels(env);
+  let students = await dbAll(env, 'SELECT * FROM students ORDER BY level, room, CAST(number AS INTEGER), number');
+  let eligible = students.filter(s => levels.indexOf(String(s.level).trim()) !== -1);
+  if (params.level) eligible = eligible.filter(s => String(s.level).trim() === String(params.level).trim());
+  if (params.room) eligible = eligible.filter(s => String(s.room).trim() === String(params.room).trim());
+
+  const res = await dbAll(env, 'SELECT * FROM mult_results');
+  const map = {};
+  res.forEach(r => { map[String(r.studentId).trim().toUpperCase()] = r; });
+
+  const table = eligible.map(s => {
+    const r = map[String(s.studentId).trim().toUpperCase()];
+    return {
+      studentId: s.studentId, number: s.number, title: s.title, fullName: s.fullName,
+      level: s.level, room: s.room,
+      done: !!r,
+      score: r ? r.score : null,
+      total: r ? r.total : MULT_TOTAL,
+      percent: r && r.total ? Math.round((r.score / r.total) * 100) : null,
+      submittedAt: r ? r.submittedAt : '',
+      durationUsed: r ? r.durationUsed : 0
+    };
+  });
+  return ok({ levels, table });
+}
+
+async function resetMultAttempt(params, env) {
+  requireTeacher(params, env);
+  const r = await dbRun(env, 'DELETE FROM mult_results WHERE UPPER(studentId) = ?',
+    String(params.studentId || '').trim().toUpperCase());
+  return ok({ removed: r.meta ? r.meta.changes : 0 });
 }

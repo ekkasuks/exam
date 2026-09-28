@@ -16,7 +16,8 @@ var SHEETS = {
   CHOICES: 'Choices',
   RESULTS: 'Results',
   ANSWERS: 'Answers',
-  SETTINGS: 'Settings'
+  SETTINGS: 'Settings',
+  MULT_RESULTS: 'MultResults'
 };
 
 // ====== หัวคอลัมน์ (ลำดับสำคัญ ห้ามสลับหลังมีข้อมูลแล้ว) ======
@@ -38,7 +39,8 @@ var HEADERS = {
     'startedAt', 'submittedAt', 'durationUsed', 'status', 'academicYear'
   ],
   Answers: ['answerId', 'attemptId', 'examId', 'studentId', 'questionId', 'selectedLabel', 'isCorrect', 'score'],
-  Settings: ['key', 'value']
+  Settings: ['key', 'value'],
+  MultResults: ['studentId', 'score', 'total', 'durationUsed', 'submittedAt', 'academicYear']
 };
 
 // ====== ค่าตั้งต้นของ Settings ======

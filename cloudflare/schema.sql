@@ -109,6 +109,16 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT
 );
 
+-- ผลทดสอบสูตรคูณ (1 ผลต่อคน ครูล้างได้)
+CREATE TABLE IF NOT EXISTS mult_results (
+  studentId    TEXT PRIMARY KEY,
+  score        INTEGER DEFAULT 0,
+  total        INTEGER DEFAULT 0,
+  durationUsed INTEGER DEFAULT 0,
+  submittedAt  TEXT,
+  academicYear TEXT
+);
+
 -- ---------- ข้อมูลเริ่มต้น ----------
 INSERT OR IGNORE INTO subjects (subjectId, name, status) VALUES
   ('SUB_thai',    'ภาษาไทย', 'ใช้งาน'),
